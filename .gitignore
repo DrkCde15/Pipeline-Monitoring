@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+*.pem
+*.key
+
+# Segredos — NUNCA versionar
+.env
+
+# Banco local de runs (gerado)
+data/*.db
+data/*.sqlite*
+
+# Testes / cobertura
+.pytest_cache/
+.coverage
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+logs/
