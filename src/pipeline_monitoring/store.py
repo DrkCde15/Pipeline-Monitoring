@@ -1,6 +1,6 @@
-"""Run model + SQLite store (stdlib only).
+"""Modelo de run + store SQLite (só stdlib).
 
-pipeline_runs columns:
+Colunas de pipeline_runs:
   run_id, pipeline_name, status, started_at, finished_at,
   duration_seconds, rows_processed, rows_failed, rows_inserted,
   rows_updated, error_message
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 
 @dataclass
 class PipelineRun:
-    """One pipeline execution (mutable until finished)."""
+    """Uma execução de pipeline (mutável até ser finalizada)."""
 
     pipeline_name: str
     run_id: str = ""
@@ -59,13 +59,13 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path) -> None:
-    """Create pipeline_runs table (idempotent)."""
+    """Cria a tabela pipeline_runs (idempotente)."""
     with _connect(db_path) as conn:
         conn.executescript(SCHEMA)
 
 
 def start_run(db_path: Path, pipeline_name: str) -> PipelineRun:
-    """Insert a running execution and return it."""
+    """Insere uma execução em andamento e a retorna."""
     run = PipelineRun(
         pipeline_name=pipeline_name,
         run_id=uuid.uuid4().hex[:12],
@@ -94,7 +94,7 @@ def finish_run(
     rows_updated: int = 0,
     error_message: str = "",
 ) -> PipelineRun:
-    """Mark a run as success/failed with metrics. Returns the updated run."""
+    """Marca uma run como success/failed com métricas. Retorna a run atualizada."""
     if status not in ("success", "failed"):
         raise ValueError(f"Invalid status: {status!r}")
     run.status = status
@@ -125,7 +125,7 @@ def finish_run(
 
 
 def fetch_runs(db_path: Path, pipeline_name: str | None = None) -> list[dict]:
-    """Return runs (newest first), optionally filtered by pipeline."""
+    """Retorna as runs (mais recentes primeiro), opcionalmente filtradas por pipeline."""
     with _connect(db_path) as conn:
         if pipeline_name:
             rows = conn.execute(

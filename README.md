@@ -6,7 +6,7 @@ Simular observabilidade de pipelines: registrar métricas de execução
 (`pipeline_runs`), consultar histórico e disparar alertas por regras simples.
 
 **Escopo desta versão (v0.1.0 — Etapa 1):** SQLite local + executor simulado
-+ 4 regras puras e testáveis. Sem Airflow e sem Grafana ainda.
++ 5 regras puras e testáveis. Sem Airflow e sem Grafana ainda.
 
 ## Problema
 
@@ -23,8 +23,10 @@ scripts/run_demo.py (4 cenários: success/slow/failed/empty) → alertas no stdo
 ```
 
 Regras: `pipeline_failed`, `duration_exceeded`, `error_rate_exceeded`,
-`rows_below_expected`. Limites via `.env` (`MAX_DURATION_SECONDS`,
-`MAX_ERROR_RATE`, `MIN_ROWS_EXPECTED`).
+`rows_below_expected` (só runs finalizados) e `stale_running` (run preso
+em `running` além de `MAX_RUNNING_SECONDS`, ou sem `started_at` válido).
+Limites via `.env` (`MAX_DURATION_SECONDS`, `MAX_ERROR_RATE`,
+`MIN_ROWS_EXPECTED`, `MAX_RUNNING_SECONDS`).
 
 Futuro: Airflow → PostgreSQL → Grafana; alertas por atraso (SLA) e
 notificação (e-mail/Slack/webhook).

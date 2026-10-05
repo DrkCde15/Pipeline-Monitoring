@@ -1,15 +1,10 @@
-"""CLI demo: simulate runs with all scenarios, then evaluate alerts.
+"""Demo via CLI: simula runs em todos os cenários e avalia os alertas.
 
-Usage:
+Uso:
     python scripts/run_demo.py
 """
 
 from __future__ import annotations
-
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from pipeline_monitoring.alerts import evaluate_run
 from pipeline_monitoring.config import AlertThresholds, load_settings, setup_logging
@@ -20,7 +15,7 @@ logger = setup_logging()
 
 
 def main() -> int:
-    """Simulate 4 runs and print fired alerts. Returns exit code."""
+    """Simula 4 runs e imprime os alertas disparados. Retorna o exit code."""
     settings = load_settings()
     init_db(settings.database_path)
     # Tight thresholds on purpose so the demo fires alerts deterministically.

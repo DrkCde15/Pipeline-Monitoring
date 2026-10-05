@@ -1,4 +1,4 @@
-"""Pipeline observability (run metrics + simple alert rules)."""
+"""Observabilidade de pipelines (métricas de runs + regras simples de alerta)."""
 
 __all__ = ["__version__"]
 

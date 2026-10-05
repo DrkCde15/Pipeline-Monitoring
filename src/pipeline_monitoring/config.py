@@ -1,4 +1,4 @@
-"""Centralized configuration."""
+"""Configuração centralizada."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 def get_project_root() -> Path:
-    """Return project root (folder containing pyproject.toml)."""
+    """Retorna a raiz do projeto (pasta que contém o pyproject.toml)."""
     current = Path(__file__).resolve()
     for parent in [current.parent, *current.parents]:
         if (parent / "pyproject.toml").exists():
@@ -18,7 +18,7 @@ def get_project_root() -> Path:
 
 
 def setup_logging(level: str | None = None) -> logging.Logger:
-    """Configure root logging once and return a namespaced logger."""
+    """Configura o logging raiz uma vez e retorna um logger do namespace."""
     resolved = (level or os.getenv("LOG_LEVEL", "INFO")).upper()
     logging.basicConfig(
         level=getattr(logging, resolved, logging.INFO),
@@ -29,16 +29,17 @@ def setup_logging(level: str | None = None) -> logging.Logger:
 
 @dataclass(frozen=True)
 class AlertThresholds:
-    """Default alert limits (overridable per pipeline later)."""
+    """Limites padrão dos alertas (podem ser sobrescritos por pipeline no futuro)."""
 
     max_duration_seconds: float
     max_error_rate: float
     min_rows_expected: int
+    max_running_seconds: float = 1800.0
 
 
 @dataclass(frozen=True)
 class Settings:
-    """Immutable runtime settings."""
+    """Configurações imutáveis de execução."""
 
     project_root: Path
     database_path: Path
@@ -47,7 +48,7 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    """Load settings from environment with local defaults."""
+    """Carrega as configurações do ambiente, com padrões locais."""
     try:
         from dotenv import load_dotenv  # type: ignore
     except ImportError:
@@ -69,6 +70,7 @@ def load_settings() -> Settings:
             max_duration_seconds=float(os.getenv("MAX_DURATION_SECONDS", "300")),
             max_error_rate=float(os.getenv("MAX_ERROR_RATE", "0.05")),
             min_rows_expected=int(os.getenv("MIN_ROWS_EXPECTED", "1")),
+            max_running_seconds=float(os.getenv("MAX_RUNNING_SECONDS", "1800")),
         ),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
     )

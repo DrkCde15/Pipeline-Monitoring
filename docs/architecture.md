@@ -11,6 +11,11 @@
 
 - Regras puras separadas do store: testabilidade sem banco.
 - `duration_seconds` calculado de `started_at/finished_at` (ISO UTC).
+- `stale_running`: runs ainda `running` são avaliados só por essa regra
+  (métricas parciais não passam pelas 4 regras de run finalizado);
+  relógio injetável (`now`) para testes determinísticos.
+- `evaluate_run` rejeita status desconhecido e run finalizada sem
+  `finished_at` (falha alto com ValueError, nunca silencioso).
 - Demo com thresholds apertados (0.3s) para disparar alertas sempre.
 
 ## Futuro (não implementado)

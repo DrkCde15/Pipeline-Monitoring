@@ -1,7 +1,7 @@
-"""Simulated pipeline executor (no real ETL — sleeps + fabricates metrics).
+"""Executor simulado de pipeline (sem ETL real — sleeps + métricas fabricadas).
 
-Used to populate pipeline_runs with realistic scenarios:
-success, slow success, failed, and empty (below expected rows).
+Usado para popular pipeline_runs com cenários realistas:
+success, slow success, failed e empty (abaixo do volume esperado).
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ def simulate_run(
     scenario: str = "success",
     rows_processed: int = 1000,
 ) -> dict:
-    """Run one simulated execution. Scenario: success|slow|failed|empty."""
+    """Executa uma simulação. Cenário: success|slow|failed|empty."""
     run = start_run(db_path, pipeline_name)
     if scenario == "success":
         time.sleep(0.05)
