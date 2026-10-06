@@ -9,6 +9,7 @@ Colunas de pipeline_runs:
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 import uuid
 from dataclasses import dataclass
@@ -16,6 +17,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+#: Tamanho máximo persistido de error_message (nunca logar payload).
+_MAX_ERROR_MESSAGE_LENGTH = 2000
+
+#: postgres://user:pass@host → postgres://***@host
+_URI_CREDENTIALS_RE = re.compile(r"(?<=://)[^/\s@]+:[^/\s@]+(?=@)")
+
+#: password=..., api_key: ..., "token": "..." → chave preservada, valor ***.
+_KEY_VALUE_SECRET_RE = re.compile(
+    r"(?i)\b(password|passwd|pwd|secret|api[_-]?key|access[_-]?token|token)\b"
+    r"([\"']?\s*[:=]\s*[\"']?)([^\s\"'},;]+)"
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS pipeline_runs (
@@ -74,6 +87,20 @@ def _normalize_pipeline_name(pipeline_name: str) -> str:
     if not name:
         raise ValueError("pipeline_name não pode ser vazio")
     return name
+
+
+def _sanitize_error_message(message: str) -> str:
+    """Mascara credenciais e trunca a mensagem de erro antes de persistir.
+
+    Tracebacks de pipelines reais podem carregar connection strings ou
+    segredos; o monitor não pode virar vetor de vazamento (LGPD).
+    Nunca logar payload — só a mensagem já sanitizada.
+    """
+    text = _URI_CREDENTIALS_RE.sub("***", message or "")
+    text = _KEY_VALUE_SECRET_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}***", text)
+    if len(text) > _MAX_ERROR_MESSAGE_LENGTH:
+        text = text[:_MAX_ERROR_MESSAGE_LENGTH] + "… [truncated]"
+    return text
 
 
 def register_pipeline(db_path: Path, pipeline_name: str) -> str:
@@ -146,14 +173,14 @@ def finish_run(
     run.rows_failed = rows_failed
     run.rows_inserted = rows_inserted
     run.rows_updated = rows_updated
-    run.error_message = error_message
+    run.error_message = _sanitize_error_message(error_message)
     with _connect(db_path) as conn:
         conn.execute(
             "UPDATE pipeline_runs SET status=?, finished_at=?, duration_seconds=?,"
             " rows_processed=?, rows_failed=?, rows_inserted=?, rows_updated=?,"
             " error_message=? WHERE run_id=?",
             (run.status, run.finished_at, run.duration_seconds, rows_processed,
-             rows_failed, rows_inserted, rows_updated, error_message, run.run_id),
+             rows_failed, rows_inserted, rows_updated, run.error_message, run.run_id),
         )
         conn.commit()
     logger.info(

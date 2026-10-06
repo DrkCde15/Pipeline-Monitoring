@@ -92,6 +92,6 @@ else:
 ## Próximas etapas
 
 1. Heartbeat/SLA completo (`stale_running` cobre run presa; falta atraso de schedule).
-2. Thresholds por pipeline + sanitização de `error_message`.
+2. Thresholds por pipeline.
 3. Integração com pipelines reais (projetos 1–2) via decorator/contexto.
 4. PostgreSQL + Airflow + Grafana (docker-compose local).

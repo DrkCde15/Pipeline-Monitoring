@@ -20,6 +20,8 @@
   (`register_pipeline`, idempotente) para typo não fragmentar o
   histórico; `simulate_run` registra automaticamente por ser helper
   de demo/teste.
+- `error_message` sanitizado no `finish_run` (máscara de credenciais +
+  truncamento em 2000 chars): o monitor não vaza segredo via log.
 - Demo com thresholds apertados (0.3s) para disparar alertas sempre.
 
 ## Futuro (não implementado)

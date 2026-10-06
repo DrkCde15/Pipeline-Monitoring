@@ -11,6 +11,7 @@ from pipeline_monitoring.alerts import evaluate_run
 from pipeline_monitoring.config import AlertThresholds
 from pipeline_monitoring.runner import simulate_run
 from pipeline_monitoring.store import (
+    _sanitize_error_message,
     fetch_runs,
     finish_run,
     init_db,
@@ -171,3 +172,41 @@ def test_simulate_failed_scenario(tmp_path: Path) -> None:
     assert runs[0]["status"] == "failed"
     assert any(a.rule == "pipeline_failed"
                for a in evaluate_run(runs[0], THRESHOLDS))
+
+
+def test_sanitize_masks_uri_credentials() -> None:
+    """Connection string com usuário/senha não vaza."""
+    msg = "connect failed: postgres://admin:s3cr3t@db:5432/app"
+    out = _sanitize_error_message(msg)
+    assert "s3cr3t" not in out
+    assert "postgres://***@db:5432/app" in out
+
+
+def test_sanitize_masks_key_value_secrets() -> None:
+    """Segredos em formato chave=valor são mascarados preservando a chave."""
+    out = _sanitize_error_message("auth error: password=supersecret (api_key: xyz)")
+    assert "supersecret" not in out and "xyz" not in out
+    assert "password=***" in out and "api_key: ***" in out
+
+
+def test_sanitize_truncates_and_keeps_clean_message() -> None:
+    """Mensagem longa é cortada; mensagem limpa passa intacta."""
+    long_msg = "x" * 3000
+    out = _sanitize_error_message(long_msg)
+    assert len(out) <= 2000 + len("… [truncated]")
+    assert out.endswith("… [truncated]")
+    assert _sanitize_error_message("Simulated connection timeout") == \
+        "Simulated connection timeout"
+
+
+def test_finish_run_persists_sanitized_message(tmp_path: Path) -> None:
+    """O que chega ao banco já está sanitizado (ponto único de escrita)."""
+    db = tmp_path / "mon.db"
+    init_db(db)
+    register_pipeline(db, "demo_pipe")
+    run = start_run(db, "demo_pipe")
+    finish_run(db, run, status="failed",
+               error_message="token=abc123 postgres://u:pw@h/db")
+    stored = fetch_runs(db, "demo_pipe")[0]["error_message"]
+    assert "abc123" not in stored and "u:pw@" not in stored
+    assert "token=***" in stored
