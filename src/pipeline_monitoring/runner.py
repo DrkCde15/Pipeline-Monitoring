@@ -10,7 +10,7 @@ import logging
 import time
 from pathlib import Path
 
-from pipeline_monitoring.store import finish_run, start_run
+from pipeline_monitoring.store import finish_run, register_pipeline, start_run
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,13 @@ def simulate_run(
     scenario: str = "success",
     rows_processed: int = 1000,
 ) -> dict:
-    """Executa uma simulação. Cenário: success|slow|failed|empty."""
+    """Executa uma simulação. Cenário: success|slow|failed|empty.
+
+    Helper de demo/teste: registra a pipeline automaticamente.
+    Pipelines reais devem usar register_pipeline + start_run,
+    onde nome desconhecido falha alto.
+    """
+    register_pipeline(db_path, pipeline_name)
     run = start_run(db_path, pipeline_name)
     if scenario == "success":
         time.sleep(0.05)

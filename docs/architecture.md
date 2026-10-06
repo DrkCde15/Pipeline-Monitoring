@@ -16,6 +16,10 @@
   relógio injetável (`now`) para testes determinísticos.
 - `evaluate_run` rejeita status desconhecido e run finalizada sem
   `finished_at` (falha alto com ValueError, nunca silencioso).
+- Catálogo `pipelines`: `start_run` exige registro prévio
+  (`register_pipeline`, idempotente) para typo não fragmentar o
+  histórico; `simulate_run` registra automaticamente por ser helper
+  de demo/teste.
 - Demo com thresholds apertados (0.3s) para disparar alertas sempre.
 
 ## Futuro (não implementado)

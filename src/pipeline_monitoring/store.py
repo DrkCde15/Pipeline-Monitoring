@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     rows_updated INTEGER NOT NULL DEFAULT 0,
     error_message TEXT
 );
+CREATE TABLE IF NOT EXISTS pipelines (
+    pipeline_name TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -59,15 +63,51 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path) -> None:
-    """Cria a tabela pipeline_runs (idempotente)."""
+    """Cria as tabelas pipeline_runs e pipelines (idempotente)."""
     with _connect(db_path) as conn:
         conn.executescript(SCHEMA)
 
 
+def _normalize_pipeline_name(pipeline_name: str) -> str:
+    """Normaliza o nome da pipeline; rejeita vazio."""
+    name = (pipeline_name or "").strip()
+    if not name:
+        raise ValueError("pipeline_name não pode ser vazio")
+    return name
+
+
+def register_pipeline(db_path: Path, pipeline_name: str) -> str:
+    """Registra uma pipeline no catálogo (idempotente). Retorna o nome normalizado."""
+    name = _normalize_pipeline_name(pipeline_name)
+    with _connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO pipelines (pipeline_name, created_at)"
+            " VALUES (?, ?)",
+            (name, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    logger.info("Pipeline registered: %s", name)
+    return name
+
+
 def start_run(db_path: Path, pipeline_name: str) -> PipelineRun:
-    """Insere uma execução em andamento e a retorna."""
+    """Insere uma execução em andamento e a retorna.
+
+    A pipeline precisa estar registrada (register_pipeline); nome
+    desconhecido falha alto para não fragmentar o histórico com typos.
+    """
+    name = _normalize_pipeline_name(pipeline_name)
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM pipelines WHERE pipeline_name=?", (name,)
+        ).fetchone()
+        if row is None:
+            raise ValueError(
+                f"Unknown pipeline: {name!r}"
+                " — register it with register_pipeline first"
+            )
     run = PipelineRun(
-        pipeline_name=pipeline_name,
+        pipeline_name=name,
         run_id=uuid.uuid4().hex[:12],
         started_at=datetime.now(timezone.utc).isoformat(),
     )
@@ -79,7 +119,7 @@ def start_run(db_path: Path, pipeline_name: str) -> PipelineRun:
             (run.run_id, run.pipeline_name, run.started_at),
         )
         conn.commit()
-    logger.info("Run started: %s (%s)", pipeline_name, run.run_id)
+    logger.info("Run started: %s (%s)", name, run.run_id)
     return run
 
 
@@ -128,6 +168,7 @@ def fetch_runs(db_path: Path, pipeline_name: str | None = None) -> list[dict]:
     """Retorna as runs (mais recentes primeiro), opcionalmente filtradas por pipeline."""
     with _connect(db_path) as conn:
         if pipeline_name:
+            pipeline_name = pipeline_name.strip()
             rows = conn.execute(
                 "SELECT * FROM pipeline_runs WHERE pipeline_name=? ORDER BY started_at DESC",
                 (pipeline_name,),

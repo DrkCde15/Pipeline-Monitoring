@@ -10,7 +10,13 @@ import pytest
 from pipeline_monitoring.alerts import evaluate_run
 from pipeline_monitoring.config import AlertThresholds
 from pipeline_monitoring.runner import simulate_run
-from pipeline_monitoring.store import fetch_runs, finish_run, init_db, start_run
+from pipeline_monitoring.store import (
+    fetch_runs,
+    finish_run,
+    init_db,
+    register_pipeline,
+    start_run,
+)
 
 THRESHOLDS = AlertThresholds(
     max_duration_seconds=300.0, max_error_rate=0.05, min_rows_expected=10
@@ -117,6 +123,7 @@ def test_store_lifecycle(tmp_path: Path) -> None:
     """start_run -> finish_run persiste métricas recuperáveis via fetch_runs."""
     db = tmp_path / "mon.db"
     init_db(db)
+    register_pipeline(db, "demo_pipe")
     run = start_run(db, "demo_pipe")
     finish_run(db, run, status="success", rows_processed=10, rows_inserted=10)
     runs = fetch_runs(db, "demo_pipe")
@@ -124,6 +131,35 @@ def test_store_lifecycle(tmp_path: Path) -> None:
     assert runs[0]["status"] == "success"
     assert runs[0]["rows_processed"] == 10
     assert runs[0]["duration_seconds"] >= 0.0
+
+
+def test_start_run_rejects_unknown_pipeline(tmp_path: Path) -> None:
+    """Pipeline fora do catálogo falha alto em vez de fragmentar o histórico."""
+    db = tmp_path / "mon.db"
+    init_db(db)
+    with pytest.raises(ValueError):
+        start_run(db, "typo_no_catalogo")
+
+
+def test_register_normalizes_and_rejects_empty(tmp_path: Path) -> None:
+    """Registro normaliza espaços e rejeita nome vazio."""
+    db = tmp_path / "mon.db"
+    init_db(db)
+    assert register_pipeline(db, "  demo_pipe  ") == "demo_pipe"
+    run = start_run(db, "demo_pipe")  # nome registrado com espaços, usa sem
+    assert run.pipeline_name == "demo_pipe"
+    with pytest.raises(ValueError):
+        register_pipeline(db, "   ")
+
+
+def test_register_is_idempotent(tmp_path: Path) -> None:
+    """Registrar duas vezes não duplica nem falha."""
+    db = tmp_path / "mon.db"
+    init_db(db)
+    register_pipeline(db, "demo_pipe")
+    register_pipeline(db, "demo_pipe")
+    run = start_run(db, "demo_pipe")
+    assert run.pipeline_name == "demo_pipe"
 
 
 def test_simulate_failed_scenario(tmp_path: Path) -> None:
