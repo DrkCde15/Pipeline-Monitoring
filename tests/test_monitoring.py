@@ -9,12 +9,14 @@ import pytest
 
 from pipeline_monitoring.alerts import evaluate_run
 from pipeline_monitoring.config import AlertThresholds
+from pipeline_monitoring.instrument import monitor, monitored_run
 from pipeline_monitoring.runner import simulate_run
 from pipeline_monitoring.store import (
     _sanitize_error_message,
     fetch_runs,
     finish_run,
     init_db,
+    record_finished_run,
     register_pipeline,
     start_run,
 )
@@ -210,3 +212,81 @@ def test_finish_run_persists_sanitized_message(tmp_path: Path) -> None:
     stored = fetch_runs(db, "demo_pipe")[0]["error_message"]
     assert "abc123" not in stored and "u:pw@" not in stored
     assert "token=***" in stored
+
+
+def test_record_finished_run(tmp_path: Path) -> None:
+    """Run finalizada com início/fim explícitos: duração calculada, dict avaliável."""
+    from datetime import datetime, timezone
+
+    db = tmp_path / "mon.db"
+    init_db(db)
+    register_pipeline(db, "airflow_task")
+    start = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 1, 0, 1, 30, tzinfo=timezone.utc)
+    run = record_finished_run(
+        db, "airflow_task", status="success",
+        started_at=start.isoformat(), finished_at=end.isoformat(),
+        rows_processed=50,
+    )
+    assert run["duration_seconds"] == 90.0
+    assert run["status"] == "success"
+    assert evaluate_run(run, THRESHOLDS) == []
+    with pytest.raises(ValueError):
+        record_finished_run(db, "nao_registrada", status="success",
+                            started_at=start.isoformat())
+
+
+def test_monitored_run_success_collects_metrics(tmp_path: Path) -> None:
+    """Bloco ok persiste métricas coletadas no objeto."""
+    db = tmp_path / "mon.db"
+    init_db(db)
+    with monitored_run(db, "etl") as m:
+        m.rows_processed = 100
+        m.rows_inserted = 100
+    stored = fetch_runs(db, "etl")[0]
+    assert stored["status"] == "success"
+    assert stored["rows_processed"] == 100
+    assert m.alerts == []
+
+
+def test_monitored_run_failure_records_and_reraises(tmp_path: Path) -> None:
+    """Exceção no bloco vira run failed (sanitizada) e é relançada."""
+    db = tmp_path / "mon.db"
+    init_db(db)
+    with pytest.raises(RuntimeError, match="boom"):
+        with monitored_run(db, "etl") as m:
+            m.rows_processed = 10
+            raise RuntimeError("boom password=x")
+    stored = fetch_runs(db, "etl")[0]
+    assert stored["status"] == "failed"
+    assert "password=x" not in stored["error_message"]
+    assert "password=***" in stored["error_message"]
+
+
+def test_monitored_run_requires_registration_when_not_auto(tmp_path: Path) -> None:
+    """Sem auto_register, pipeline fora do catálogo falha alto."""
+    db = tmp_path / "mon.db"
+    init_db(db)
+    with pytest.raises(ValueError):
+        with monitored_run(db, "fantasma", auto_register=False):
+            pass
+
+
+def test_monitor_decorator_captures_dict_and_passes_through(tmp_path: Path) -> None:
+    """Decorator captura métricas de dict retornado; int passa intacto."""
+    db = tmp_path / "mon.db"
+    init_db(db)
+
+    @monitor(db_path=db, pipeline_name="etl_dict")
+    def fake_etl() -> dict:
+        return {"rows_processed": 7, "rows_inserted": 7}
+
+    @monitor(db_path=db, pipeline_name="etl_int")
+    def fake_main() -> int:
+        return 0
+
+    assert fake_etl()["rows_processed"] == 7
+    assert fake_main() == 0
+    by_name = {r["pipeline_name"]: r for r in fetch_runs(db)}
+    assert by_name["etl_dict"]["rows_processed"] == 7
+    assert by_name["etl_int"]["status"] == "success"

@@ -22,6 +22,10 @@
   de demo/teste.
 - `error_message` sanitizado no `finish_run` (máscara de credenciais +
   truncamento em 2000 chars): o monitor não vaza segredo via log.
+- Instrumentação: `instrument.monitored_run` (contexto) + `@monitor`
+  (decorator) p/ scripts; `store.record_finished_run` p/ callbacks do
+  Airflow e backfill — wired em financial-data-pipeline e multi-format-etl
+  via `dags/monitoring_callbacks.py` (no-op sem o pacote instalado).
 - Demo com thresholds apertados (0.3s) para disparar alertas sempre.
 
 ## Futuro (não implementado)

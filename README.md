@@ -48,7 +48,7 @@ externo.
 
 ```text
 pipeline-monitoring/
-├── src/pipeline_monitoring/{config,store,alerts,runner}.py
+├── src/pipeline_monitoring/{config,store,alerts,runner,instrument}.py
 ├── scripts/run_demo.py
 ├── sql/                  # reservado: DDL Postgres futuro
 ├── data/                 # monitoring.db local (gitignored)
@@ -68,6 +68,27 @@ pytest
 ```
 
 ## Uso em pipelines reais
+
+```python
+from pathlib import Path
+from pipeline_monitoring.instrument import monitored_run
+
+db = Path("data/monitoring.db")
+with monitored_run(db, "minha_pipeline") as run:
+    ...  # ETL real aqui
+    run.rows_processed = n
+    run.rows_inserted = n
+# saída do bloco: success com métricas; exceção: failed + relançada.
+# Alertas avaliados, logados e em `run.alerts`.
+```
+
+Para `main()` de script, há o decorator `@monitor` (métricas via dict
+retornado). No Airflow, prefira os callbacks `on_task_success` /
+`on_task_failure` de `dags/monitoring_callbacks.py` (já wired nos
+projetos `financial-data-pipeline` e `multi-format-etl`): uma run por
+task com início/fim reais, sem mudar os scripts ETL.
+
+Exemplo manual (sem o context manager):
 
 ```python
 from pathlib import Path
@@ -93,5 +114,5 @@ else:
 
 1. Heartbeat/SLA completo (`stale_running` cobre run presa; falta atraso de schedule).
 2. Thresholds por pipeline.
-3. Integração com pipelines reais (projetos 1–2) via decorator/contexto.
-4. PostgreSQL + Airflow + Grafana (docker-compose local).
+3. Volume por task nos projetos integrados (linhas via `monitored_run` nos scripts).
+4. PostgreSQL + Grafana (docker-compose local).

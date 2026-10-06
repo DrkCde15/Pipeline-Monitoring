@@ -117,6 +117,18 @@ def register_pipeline(db_path: Path, pipeline_name: str) -> str:
     return name
 
 
+def _require_registered(conn: sqlite3.Connection, name: str) -> None:
+    """Falha alto se a pipeline não está no catálogo."""
+    row = conn.execute(
+        "SELECT 1 FROM pipelines WHERE pipeline_name=?", (name,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"Unknown pipeline: {name!r}"
+            " — register it with register_pipeline first"
+        )
+
+
 def start_run(db_path: Path, pipeline_name: str) -> PipelineRun:
     """Insere uma execução em andamento e a retorna.
 
@@ -125,14 +137,7 @@ def start_run(db_path: Path, pipeline_name: str) -> PipelineRun:
     """
     name = _normalize_pipeline_name(pipeline_name)
     with _connect(db_path) as conn:
-        row = conn.execute(
-            "SELECT 1 FROM pipelines WHERE pipeline_name=?", (name,)
-        ).fetchone()
-        if row is None:
-            raise ValueError(
-                f"Unknown pipeline: {name!r}"
-                " — register it with register_pipeline first"
-            )
+        _require_registered(conn, name)
     run = PipelineRun(
         pipeline_name=name,
         run_id=uuid.uuid4().hex[:12],
@@ -189,6 +194,68 @@ def finish_run(
         run.duration_seconds, rows_processed, rows_failed,
     )
     return run
+
+
+def record_finished_run(
+    db_path: Path,
+    pipeline_name: str,
+    *,
+    status: str,
+    started_at: str,
+    finished_at: str | None = None,
+    rows_processed: int = 0,
+    rows_failed: int = 0,
+    rows_inserted: int = 0,
+    rows_updated: int = 0,
+    error_message: str = "",
+) -> dict:
+    """Registra uma run já finalizada e retorna seu dict.
+
+    Para quem não usa start/finish (callbacks do Airflow, backfill):
+    insere a linha finalizada direto, com início/fim explícitos em ISO.
+    Exige pipeline registrada; sanitiza a mensagem de erro.
+    """
+    if status not in ("success", "failed"):
+        raise ValueError(f"Invalid status: {status!r}")
+    name = _normalize_pipeline_name(pipeline_name)
+    start = datetime.fromisoformat(started_at)
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    end = datetime.fromisoformat(finished_at) if finished_at else datetime.now(timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    duration = (end - start).total_seconds()
+    clean_error = _sanitize_error_message(error_message)
+    run_id = uuid.uuid4().hex[:12]
+    with _connect(db_path) as conn:
+        _require_registered(conn, name)
+        conn.execute(
+            "INSERT INTO pipeline_runs (run_id, pipeline_name, status,"
+            " started_at, finished_at, duration_seconds, rows_processed,"
+            " rows_failed, rows_inserted, rows_updated, error_message)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (run_id, name, status, start.isoformat(), end.isoformat(),
+             duration, rows_processed, rows_failed, rows_inserted,
+             rows_updated, clean_error),
+        )
+        conn.commit()
+    logger.info(
+        "Run recorded: %s (%s) %s in %.2fs (processed=%d failed=%d)",
+        name, run_id, status, duration, rows_processed, rows_failed,
+    )
+    return {
+        "run_id": run_id,
+        "pipeline_name": name,
+        "status": status,
+        "started_at": start.isoformat(),
+        "finished_at": end.isoformat(),
+        "duration_seconds": duration,
+        "rows_processed": rows_processed,
+        "rows_failed": rows_failed,
+        "rows_inserted": rows_inserted,
+        "rows_updated": rows_updated,
+        "error_message": clean_error,
+    }
 
 
 def fetch_runs(db_path: Path, pipeline_name: str | None = None) -> list[dict]:
